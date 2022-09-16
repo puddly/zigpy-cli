@@ -209,3 +209,17 @@ async def energy_scan(app, nwk, num_scans):
             )
 
         print()
+
+
+@radio.command()
+@click.pass_obj
+@click_coroutine
+async def stress(app):
+    await app.startup()
+
+    data = b"test" * 25
+
+    for i in itertools.count(start=1):
+        LOGGER.info("Iteration %d", i)
+        (echo_rsp,) = await app._ezsp.echo(data)
+        assert echo_rsp == data
