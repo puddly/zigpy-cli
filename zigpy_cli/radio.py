@@ -7,6 +7,8 @@ import importlib.util
 import itertools
 import json
 import logging
+import random
+import time
 
 import click
 import zigpy.state
@@ -225,6 +227,57 @@ async def energy_scan(app, num_scans):
             )
 
         print()
+
+
+@radio.command()
+@click.pass_obj
+@click.option("-n", "--num-scans", type=int, default=10 * 2**8)
+@click.option("-r", "--randomize", type=bool, default=True)
+@click.argument("output", type=click.File("w"), default="-")
+@click_coroutine
+async def advanced_energy_scan(app, output, num_scans, randomize):
+    await app.startup()
+    LOGGER.info("Running scan...")
+
+    channels = zigpy.types.Channels.ALL_CHANNELS
+    scan_counts = {channel: num_scans for channel in channels}
+
+    if randomize:
+
+        def iter_channels():
+            while scan_counts:
+                channel = random.choice(tuple(scan_counts))
+                scan_counts[channel] -= 1
+
+                yield channel
+
+                if scan_counts[channel] <= 0:
+                    del scan_counts[channel]
+
+    else:
+
+        def iter_channels():
+            for channel, count in scan_counts.items():
+                for i in range(count):
+                    yield channel
+
+    with click.progressbar(
+        iterable=iter_channels(),
+        length=len(list(channels)) * num_scans,
+        item_show_func=lambda item: None if item is None else f"Channel {item}",
+    ) as bar:
+        output.write("Timestamp,Channel,Energy\n")
+
+        for channel in bar:
+            results = await app.energy_scan(
+                channels=zigpy.types.Channels.from_channel_list([channel]),
+                duration_exp=0,
+                count=1,
+            )
+
+            energy = results[channel]
+            timestamp = time.time()
+            output.write(f"{timestamp:0.4f},{channel},{energy:0.4f}\n")
 
 
 @radio.command()
