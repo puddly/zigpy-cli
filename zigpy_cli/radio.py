@@ -279,6 +279,25 @@ async def advanced_energy_scan(app, output, num_scans, randomize):
             timestamp = time.time()
             output.write(f"{timestamp:0.4f},{channel},{energy:0.4f}\n")
 
+    import bellows.types
+    from bellows.zigbee.application import (
+        ControllerApplication as EzspControllerApplication,
+    )
+
+    if not isinstance(app, EzspControllerApplication):
+        return
+
+    await asyncio.sleep(1)
+    for channel in channels:
+        networks = await app._ezsp.startScan(
+            scanType=bellows.types.EzspNetworkScanType.ACTIVE_SCAN,
+            channelMask=zigpy.types.Channels.from_channel_list([channel]),
+            duration=6,
+        )
+
+        for network, lqi, rssi in networks:
+            print(f"Found network {network}: LQI={lqi}, RSSI={rssi}")
+
 
 @radio.command()
 @click.pass_obj
