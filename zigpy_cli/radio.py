@@ -49,21 +49,18 @@ async def radio(ctx, radio, port, baudrate=None, database=None):
     radio_module = importlib.import_module(module)
 
     # Start the radio
-    app_cls = radio_module.ControllerApplication
-    config = app_cls.SCHEMA(
-        {
-            "device": {"path": port},
-            "backup_enabled": False,
-            "startup_energy_scan": False,
-            "database_path": database,
-            "use_thread": False,
-        }
-    )
+    config = {
+        "device": {"path": port},
+        "backup_enabled": False,
+        "startup_energy_scan": False,
+        "database_path": database,
+        "use_thread": False,
+    }
 
     if baudrate is not None:
         config["device"]["baudrate"] = baudrate
 
-    app = app_cls(config)
+    app = radio_module.ControllerApplication(config)
 
     ctx.obj = app
     ctx.call_on_close(radio_cleanup)
