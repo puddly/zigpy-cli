@@ -304,21 +304,25 @@ async def advanced_energy_scan(
 
     await asyncio.sleep(1)
     for channel in channels:
-        print(f"Scanning for networks on channel {channel}")
         networks = set()
 
         for attempt in range(num_network_scans):
+            print(
+                "Scanning for networks on channel"
+                f" {channel} ({attempt + 1} / {num_network_scans})"
+            )
             networks_scan = await app._ezsp.startScan(
                 scanType=bellows.types.EzspNetworkScanType.ACTIVE_SCAN,
                 channelMask=zigpy.types.Channels.from_channel_list([channel]),
                 duration=6,
             )
-            networks_scan = tuple(
-                [(network.freeze(), lqi, rssi) for network, lqi, rssi in networks_scan]
-            )
-            new_networks = set(networks_scan) - networks
 
-            for network, lqi, rssi in new_networks:
+            for network, lqi, rssi in networks_scan:
+                if network.replace(allowingJoin=None).freeze() in networks:
+                    continue
+
+                networks.add(network.replace(allowingJoin=None).freeze())
+
                 print(f"Found network {network}: LQI={lqi}, RSSI={rssi}")
                 scan_data["network_scan"].append(
                     {
@@ -331,8 +335,6 @@ async def advanced_energy_scan(
                         },
                     }
                 )
-
-            networks.update(new_networks)
 
     json.dump(scan_data, output, separators=(",", ":"))
 
