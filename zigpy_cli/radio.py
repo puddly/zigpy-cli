@@ -253,6 +253,7 @@ async def advanced_energy_scan(
     scan_counts = {channel: num_energy_scans for channel in channels}
 
     scan_data = {
+        "current_channel": app.state.network_info.channel,
         "energy_scan": [],
         "network_scan": [],
     }
@@ -302,7 +303,10 @@ async def advanced_energy_scan(
                 }
             )
 
-    await asyncio.sleep(1)
+    if not isinstance(app, EzspControllerApplication):
+        json.dump(scan_data, output, separators=(",", ":"))
+        return
+
     for channel in channels:
         networks = set()
 
@@ -329,10 +333,11 @@ async def advanced_energy_scan(
                         "channel": channel,
                         "lqi": lqi,
                         "rssi": rssi,
-                        "network": {
-                            **network.as_dict(),
-                            "extendedPanId": str(network.extendedPanId),
-                        },
+                        "allowing_join": network.allowingJoin,
+                        "extended_pan_id": str(network.extendedPanId),
+                        "nwk_update_id": network.nwkUpdateId,
+                        "pan_id": network.panId,
+                        "stack_profile": network.stackProfile,
                     }
                 )
 
