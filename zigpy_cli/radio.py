@@ -242,7 +242,7 @@ async def change_channel(app, channel):
 
 @radio.command()
 @click.pass_obj
-@click.option("-r", "--randomize", is_flag=True, type=bool, default=False)
+@click.option("-r", "--channel-hop-randomly", is_flag=True, type=bool, default=False)
 @click.option(
     "-c",
     "--channels",
@@ -252,8 +252,10 @@ async def change_channel(app, channel):
 @click.option("-p", "--channel-hop-period", type=float, default=5.0)
 @click.option("-o", "--output", type=click.File("wb"), required=True)
 @click_coroutine
-async def packet_capture(app, randomize, channels, channel_hop_period, output):
-    if not randomize:
+async def packet_capture(
+    app, channel_hop_randomly, channels, channel_hop_period, output
+):
+    if not channel_hop_randomly:
         channels_iter = itertools.cycle(channels)
     else:
 
