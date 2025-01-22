@@ -7,15 +7,19 @@ import importlib.util
 import itertools
 import json
 import logging
+import random
 
 import click
 import zigpy.state
 import zigpy.types
 import zigpy.zdo
 import zigpy.zdo.types
+from zigpy.application import ControllerApplication
 
 from zigpy_cli.cli import cli, click_coroutine
+from zigpy_cli.common import CHANNELS_LIST
 from zigpy_cli.const import RADIO_LOGGING_CONFIGS, RADIO_TO_PACKAGE, RADIO_TO_PYPI
+from zigpy_cli.helpers import PcapWriter
 
 LOGGER = logging.getLogger(__name__)
 
@@ -234,3 +238,53 @@ async def change_channel(app, channel):
     LOGGER.info("Current channel is %s", app.state.network_info.channel)
 
     await app.move_network_to_channel(channel)
+
+
+@radio.command()
+@click.pass_obj
+@click.option("-r", "--randomize", is_flag=True, type=bool, default=False)
+@click.option(
+    "-c",
+    "--channels",
+    type=CHANNELS_LIST,
+    default=zigpy.types.Channels.ALL_CHANNELS,
+)
+@click.option("-h", "--channel-hop-period", type=int, default=5)
+@click.option("-o", "--output", type=click.File("wb"), required=True)
+@click_coroutine
+async def packet_capture(app, randomize, channels, channel_hop_period, output):
+    if not randomize:
+        channels_iter = itertools.cycle(channels)
+    else:
+
+        def channels_iter_func():
+            while True:
+                yield random.choice(channels)
+
+        channels_iter = channels_iter_func()
+
+    if app._packet_capture is ControllerApplication._packet_capture:
+        raise click.ClickException("Packet capture is not supported by this radio")
+
+    await app.connect()
+
+    async with app.packet_capture(channel=next(channels_iter)) as capture:
+        async with asyncio.TaskGroup() as tg:
+
+            async def channel_hopper():
+                for channel in channels_iter:
+                    await asyncio.sleep(channel_hop_period)
+                    LOGGER.debug("Changing channel to %s", channel)
+                    await capture.change_channel(channel)
+
+            tg.create_task(channel_hopper())
+
+            writer = PcapWriter(output)
+            writer.write_header()
+
+            async for packet in capture:
+                LOGGER.debug("Got a packet %s", packet)
+                writer.write_packet(packet)
+
+                if output.name == "<stdout>":  # Surely there's a better way?
+                    output.flush()
