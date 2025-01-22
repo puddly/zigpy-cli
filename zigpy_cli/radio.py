@@ -261,7 +261,7 @@ async def packet_capture(
 
         def channels_iter_func():
             while True:
-                yield random.choice(channels)
+                yield random.choice(tuple(channels))
 
         channels_iter = channels_iter_func()
 
@@ -270,23 +270,24 @@ async def packet_capture(
 
     await app.connect()
 
-    async with app.packet_capture(channel=next(channels_iter)) as capture:
-        async with asyncio.TaskGroup() as tg:
+    writer = PcapWriter(output)
+    writer.write_header()
 
-            async def channel_hopper():
-                for channel in channels_iter:
-                    await asyncio.sleep(channel_hop_period)
-                    LOGGER.debug("Changing channel to %s", channel)
-                    await capture.change_channel(channel)
+    async with asyncio.TaskGroup() as tg:
+        channel_hopper_task = None
 
-            tg.create_task(channel_hopper())
+        async def channel_hopper():
+            for channel in channels_iter:
+                await asyncio.sleep(channel_hop_period)
+                LOGGER.debug("Changing channel to %s", channel)
+                await app.packet_capture_change_channel(channel)
 
-            writer = PcapWriter(output)
-            writer.write_header()
+        async for packet in app.packet_capture(channel=next(channels_iter)):
+            if channel_hopper_task is None:
+                channel_hopper_task = tg.create_task(channel_hopper())
 
-            async for packet in capture:
-                LOGGER.debug("Got a packet %s", packet)
-                writer.write_packet(packet)
+            LOGGER.debug("Got a packet %s", packet)
+            writer.write_packet(packet)
 
-                if output.name == "<stdout>":  # Surely there's a better way?
-                    output.flush()
+            if output.name == "<stdout>":  # Surely there's a better way?
+                output.flush()
