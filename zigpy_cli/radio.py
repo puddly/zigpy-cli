@@ -8,6 +8,7 @@ import itertools
 import json
 import logging
 import random
+import sys
 
 import click
 import zigpy.state
@@ -251,10 +252,19 @@ async def change_channel(app, channel):
 )
 @click.option("-p", "--channel-hop-period", type=float, default=5.0)
 @click.option("-o", "--output", type=click.File("wb"), required=True)
+@click.option("--interleave", is_flag=True, type=bool, default=False)
 @click_coroutine
 async def packet_capture(
-    app, channel_hop_randomly, channels, channel_hop_period, output
+    app,
+    channel_hop_randomly,
+    channels,
+    channel_hop_period,
+    output,
+    interleave,
 ):
+    if output.name == "<stdout>" and not interleave:
+        output = sys.stdout.buffer.raw
+
     if not channel_hop_randomly:
         channels_iter = itertools.cycle(channels)
     else:
@@ -270,8 +280,9 @@ async def packet_capture(
 
     await app.connect()
 
-    writer = PcapWriter(output)
-    writer.write_header()
+    if not interleave:
+        writer = PcapWriter(output)
+        writer.write_header()
 
     async with asyncio.TaskGroup() as tg:
         channel_hopper_task = None
@@ -287,7 +298,21 @@ async def packet_capture(
                 channel_hopper_task = tg.create_task(channel_hopper())
 
             LOGGER.debug("Got a packet %s", packet)
-            writer.write_packet(packet)
 
-            if output.name == "<stdout>":  # Surely there's a better way?
+            if not interleave:
+                writer.write_packet(packet)
+            else:
+                # To do line interleaving, encode the packets as JSON
+                output.write(
+                    json.dumps(
+                        {
+                            "timestamp": packet.timestamp.isoformat(),
+                            "rssi": packet.rssi,
+                            "lqi": packet.lqi,
+                            "channel": packet.channel,
+                            "data": packet.data.hex(),
+                        }
+                    ).encode("ascii")
+                    + b"\n"
+                )
                 output.flush()
