@@ -249,7 +249,7 @@ async def change_channel(app, channel):
     type=CHANNELS_LIST,
     default=zigpy.types.Channels.ALL_CHANNELS,
 )
-@click.option("-h", "--channel-hop-period", type=int, default=5)
+@click.option("-p", "--channel-hop-period", type=float, default=5.0)
 @click.option("-o", "--output", type=click.File("wb"), required=True)
 @click_coroutine
 async def packet_capture(app, randomize, channels, channel_hop_period, output):
