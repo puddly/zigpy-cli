@@ -18,7 +18,7 @@ dependencies = [
     "coloredlogs",
     "scapy",
     "zigpy>=0.55.0",
-    "bellows>=0.35.1",
+    "bellows>=0.43.0",
     "zigpy-deconz>=0.21.0",
     "zigpy-xbee>=0.18.0",
     "zigpy-zboss>=1.1.0",
