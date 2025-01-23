@@ -8,7 +8,7 @@ jobs:
   shared-ci:
     uses: zigpy/workflows/.github/workflows/ci.yml@main
     with:
-      CODE_FOLDER: zigpy
+      CODE_FOLDER: zigpy_cli
       CACHE_VERSION: 3
       PRE_COMMIT_CACHE_PATH: ~/.cache/pre-commit
       PYTHON_VERSION_DEFAULT: 3.9.15
