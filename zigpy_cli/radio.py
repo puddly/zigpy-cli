@@ -7,15 +7,20 @@ import importlib.util
 import itertools
 import json
 import logging
+import random
+import sys
 
 import click
 import zigpy.state
 import zigpy.types
 import zigpy.zdo
 import zigpy.zdo.types
+from zigpy.application import ControllerApplication
 
 from zigpy_cli.cli import cli, click_coroutine
+from zigpy_cli.common import CHANNELS_LIST
 from zigpy_cli.const import RADIO_LOGGING_CONFIGS, RADIO_TO_PACKAGE, RADIO_TO_PYPI
+from zigpy_cli.helpers import PcapWriter
 
 LOGGER = logging.getLogger(__name__)
 
@@ -234,3 +239,80 @@ async def change_channel(app, channel):
     LOGGER.info("Current channel is %s", app.state.network_info.channel)
 
     await app.move_network_to_channel(channel)
+
+
+@radio.command()
+@click.pass_obj
+@click.option("-r", "--channel-hop-randomly", is_flag=True, type=bool, default=False)
+@click.option(
+    "-c",
+    "--channels",
+    type=CHANNELS_LIST,
+    default=zigpy.types.Channels.ALL_CHANNELS,
+)
+@click.option("-p", "--channel-hop-period", type=float, default=5.0)
+@click.option("-o", "--output", type=click.File("wb"), required=True)
+@click.option("--interleave", is_flag=True, type=bool, default=False)
+@click_coroutine
+async def packet_capture(
+    app,
+    channel_hop_randomly,
+    channels,
+    channel_hop_period,
+    output,
+    interleave,
+):
+    if output.name == "<stdout>" and not interleave:
+        output = sys.stdout.buffer.raw
+
+    if not channel_hop_randomly:
+        channels_iter = itertools.cycle(channels)
+    else:
+
+        def channels_iter_func():
+            while True:
+                yield random.choice(tuple(channels))
+
+        channels_iter = channels_iter_func()
+
+    if app._packet_capture is ControllerApplication._packet_capture:
+        raise click.ClickException("Packet capture is not supported by this radio")
+
+    await app.connect()
+
+    if not interleave:
+        writer = PcapWriter(output)
+        writer.write_header()
+
+    async with asyncio.TaskGroup() as tg:
+        channel_hopper_task = None
+
+        async def channel_hopper():
+            for channel in channels_iter:
+                await asyncio.sleep(channel_hop_period)
+                LOGGER.debug("Changing channel to %s", channel)
+                await app.packet_capture_change_channel(channel)
+
+        async for packet in app.packet_capture(channel=next(channels_iter)):
+            if channel_hopper_task is None:
+                channel_hopper_task = tg.create_task(channel_hopper())
+
+            LOGGER.debug("Got a packet %s", packet)
+
+            if not interleave:
+                writer.write_packet(packet)
+            else:
+                # To do line interleaving, encode the packets as JSON
+                output.write(
+                    json.dumps(
+                        {
+                            "timestamp": packet.timestamp.isoformat(),
+                            "rssi": packet.rssi,
+                            "lqi": packet.lqi,
+                            "channel": packet.channel,
+                            "data": packet.data.hex(),
+                        }
+                    ).encode("ascii")
+                    + b"\n"
+                )
+                output.flush()
